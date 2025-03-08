@@ -1,0 +1,52 @@
+import websocket
+import json
+import pandas as pd
+import streamlit as st
+from collections import defaultdict
+
+# Binance WebSocket URL
+STREAM_URL = "wss://stream.binance.com:9443/ws/!ticker@arr"
+
+# Opslag voor 1-minuut volume
+volume_data = defaultdict(float)
+
+def on_message(ws, message):
+    global volume_data
+    data = json.loads(message)
+    
+    for ticker in data:
+        symbol = ticker["s"]  # Symbool (bijv. BTCUSDT)
+        quote_volume = float(ticker["q"])
+        
+        # Update volume per symbool
+        volume_data[symbol] += quote_volume
+    
+    # Filter coins met $100,000+ volume per minuut
+    filtered = {k: v for k, v in volume_data.items() if v >= 100000}
+    
+    if filtered:
+        df = pd.DataFrame(filtered.items(), columns=["Symbol", "1min Volume ($)"])
+        df = df.sort_values(by="1min Volume ($)", ascending=False)
+        st.write("### Top Coins met 1-minuut volume >= $100,000")
+        st.dataframe(df)
+
+def on_error(ws, error):
+    st.error(f"Error: {error}")
+
+def on_close(ws, close_status_code, close_msg):
+    st.write("WebSocket gesloten")
+
+def on_open(ws):
+    st.write("WebSocket verbonden - live Binance 1-minuut volume scanner")
+
+def run_websocket():
+    ws = websocket.WebSocketApp(STREAM_URL, on_message=on_message, on_error=on_error, on_close=on_close)
+    ws.on_open = on_open
+    ws.run_forever()
+
+# Streamlit UI
+st.title("📊 Live Binance 1-Min Volume Scanner")
+st.write("Monitor real-time volume van cryptomunten op Binance.")
+
+if st.button("Start Scanner"):
+    run_websocket()
